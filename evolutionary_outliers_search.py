@@ -3,7 +3,7 @@ from functools import reduce
 from utils import cartesian
 
 
-class EvolutionaryOutliersSearch(TransformerMixin):
+class EvolutionaryOutliersSearch:
     """
         Class for performing outliers search for high dimensional data using
         evolutionary algorithm.
