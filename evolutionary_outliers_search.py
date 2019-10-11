@@ -1,5 +1,4 @@
 import numpy as np
-from sklearn.base import TransformerMixin
 from functools import reduce
 from utils import cartesian
 
@@ -42,7 +41,7 @@ class EvolutionaryOutliersSearch(TransformerMixin):
         self.best_set = np.empty(0)
         self.best_set_coef = np.empty(0)
 
-    def fit(self, data, y=None):
+    def fit(self, data):
         """
                 Fit the data by partitioning it into self.f equidepth ranges featurewise.
 
@@ -65,15 +64,10 @@ class EvolutionaryOutliersSearch(TransformerMixin):
             values=-1, axis=0
         )
         self.partitions = partitions.T.reshape((self.features_number, self.f, -1))
-        return self
 
-    def transform(self, data):
+    def transform(self):
         """
                 Find points in the data that are marked to be outliers.
-
-                Args:
-                    ----------
-                    data (numpy.array) : 2D array of data.
 
                 Returns:
                     ----------
@@ -181,7 +175,7 @@ class EvolutionaryOutliersSearch(TransformerMixin):
         coefficients = np.empty(shape=(self.p,))
         for i, solution in enumerate(s):
             coefficients[i] = self.sparcity_coefficient(solution)
-        ranks = coefficients.argsort().argsort()
+        ranks = p - coefficients.argsort().argsort()
         return s[np.random.choice(np.arange(p), size=p, p=ranks / np.sum(ranks))]
 
     def cross_over(self, s):
