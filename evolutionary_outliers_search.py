@@ -15,7 +15,7 @@ class EvolutionaryOutliersSearch:
 
             Args:
                 ----------
-                results_number (int) : Number of outlier ranges to find.
+                results_number (int) : Number of outliers to find.
                 dimensionality (int) : Dimensionality of the projection which is used to determine the outliers.
                 p (int) : number of solutions to work with.
                 p1 (float) : probability of first type mutation.
@@ -24,12 +24,12 @@ class EvolutionaryOutliersSearch:
                 random_state (int) : seed for random numbers generator.
 
         """
-        self.result_number_ = results_number
-        self.dimensionality = dimensionality
-        self.p = p
+        self.result_number = int(results_number)
+        self.dimensionality = int(dimensionality)
+        self.p = int(p)
         self.p1 = p1
         self.p2 = p2
-        self.f = f
+        self.f = int(f)
         np.random.seed(random_state)
         #: int: Number of instances in fitted data.
         self.records_number = None
@@ -37,9 +37,10 @@ class EvolutionaryOutliersSearch:
         self.features_number = None
         # numpy.array: 3D array of index partitions according to each feature.
         self.partitions = None
-        # list of numpy.array: List with best solutions found.
+        # 1D numpy.array: List with outliers found.
         self.best_set = np.empty(0)
         self.best_set_coef = np.empty(0)
+        self.i = 0
 
     def fit(self, data):
         """
@@ -75,14 +76,29 @@ class EvolutionaryOutliersSearch:
         """
         s = self.get_initial_state()
         while not self.convergence(s):
+            self.i += 1
             s = self.selection(s)
             s = self.cross_over(s)
             s = self.mutation(s)
             self.save_best_solutions(s)
 
-        return np.unique(np.concatenate([
-            self.query_partions(solution) for solution in self.best_set
-        ]))
+        print(self.i)
+        return self.best_set, self.best_set_coef
+
+    def __call__(self, data):
+        """
+                Perform fit-transform to the given data.
+
+                Args:
+                    ----------
+                    data (numpy.array) : 2D array of data to find outliers in.
+
+                Returns:
+                    ----------
+                    np.array: 1D array of indexes of ouliers in data
+        """
+        self.fit(data)
+        return self.transform()
 
     def query_partions(self, solution):
         """
@@ -101,7 +117,7 @@ class EvolutionaryOutliersSearch:
         intersection = reduce(np.intersect1d, points)
         return intersection[intersection != -1]
 
-    def sparcity_coefficient(self, solution, dimensionality=None):
+    def sparcity_coefficient(self, solution, dimensionality=None, return_points=False):
         """
                 Compute sparsity coefficient of a cube represented by a solution.
 
@@ -109,6 +125,7 @@ class EvolutionaryOutliersSearch:
                     ----------
                     solution (numpy.array) : 1d array representing a solution.
                     dimensionality (int, optional) : dimensionality of solution
+                    return_points (boolean, optional) : whether return point queried
                 Returns:
                     ----------
                     float: sparsity coefficient of given solution
@@ -118,8 +135,12 @@ class EvolutionaryOutliersSearch:
 
         points = self.query_partions(solution)
         prob = 1 / self.f ** dimensionality
-        return (len(points) - self.records_number * prob) / \
-            np.sqrt(self.records_number * prob * (1 - prob))
+        coef = (len(points) - self.records_number * prob) / \
+               np.sqrt(self.records_number * prob * (1 - prob))
+        if return_points:
+            return coef, points
+        else:
+            return coef
 
     def get_initial_state(self):
         """
@@ -217,12 +238,13 @@ class EvolutionaryOutliersSearch:
             # find best solution among r
             r_size = r.shape[0]
             best_coef, best_sol = np.inf, None
-            for sol in cartesian(np.vstack([s1[r], s2[r]]).T):
-                c1[r] = sol
-                coef = self.sparcity_coefficient(c1, r_size)
-                if coef < best_coef:
-                    best_coef, best_sol = coef, sol
-            c1[r] = best_sol
+            if r_size:
+                for sol in cartesian(np.vstack([s1[r], s2[r]]).T):
+                    c1[r] = sol
+                    coef = self.sparcity_coefficient(c1, r_size)
+                    if coef < best_coef:
+                        best_coef, best_sol = coef, sol
+                c1[r] = best_sol
             # greedily find best solution among q
             dimensions_inserted = r_size
             taken_q = np.zeros_like(q)
@@ -232,13 +254,13 @@ class EvolutionaryOutliersSearch:
                 best_coef, best_index, current_best_index = np.inf, None, None
                 for j, (taken, q_index) in enumerate(zip(taken_q, q)):
                     if not taken:
-                        c1[q_index] = q_sol[q_index]
+                        c1[q_index] = q_sol[j]
                         coef = self.sparcity_coefficient(c1, dimensions_inserted)
                         if coef < best_coef:
                             best_coef, best_index, current_best_index = coef, q_index, j
                         c1[q_index] = -1
 
-                c1[best_index] = q_sol[best_index]
+                c1[best_index] = q_sol[current_best_index]
                 taken_q[current_best_index] = 1
 
             # make c2 complemtary to c1
@@ -262,7 +284,7 @@ class EvolutionaryOutliersSearch:
                     ----------
                     np.array: 2d array representing a set of solutions after mutation.
         """
-        for i, solution in enumerate(s):
+        for solution in s:
             #         first type mutation -1 -> N, M -> -1
             if np.random.random() < self.p1:
                 remove_position = np.random.choice(
@@ -271,26 +293,31 @@ class EvolutionaryOutliersSearch:
                 insert_position = np.random.choice(
                     np.where(solution == -1)[0]
                 )
-                solution[i, remove_position] = -1
-                solution[i, insert_position] = np.random.randint(self.f)
+                solution[remove_position] = -1
+                solution[insert_position] = np.random.randint(self.f)
             # second type mutation N -> M
             if np.random.random() < self.p2:
                 mutation_position = np.random.choice(
                     np.where(solution != -1)[0]
                 )
-                solution[i, mutation_position] = np.random.randint(self.f)
+                solution[mutation_position] = np.random.randint(self.f)
         return s
 
     def save_best_solutions(self, s):
         """
-                Save best results_number solutions from current best solutions and s
+                Save results_number points which are located in most sparse regions
 
                 Args:
                     ----------
                     s (numpy.array) : 2d array representing a set of solutions.
         """
-        s_coef = [self.sparcity_coefficient(sol) for sol in s]
+        s_coef, points = map(list,
+                             zip(*[self.sparcity_coefficient(solution, return_points=True) for solution in s]))
+
+        points_number = [len(p) for p in points]
+        s_coef = np.repeat(s_coef, points_number)
+
         coefs = np.concatenate([self.best_set_coef, s_coef])
-        best_indexes = np.argpartition(coefs, self.result_number_)[:self.result_number_]
-        self.best_set = np.concatenate([self.best_set, s])[best_indexes]
-        self.best_set_coef = np.concatenate([self.best_set_coef, s])[best_indexes]
+        best_indexes = np.argpartition(coefs, self.result_number-1)[:self.result_number]
+        self.best_set = np.concatenate([self.best_set, np.concatenate(points)])[best_indexes]
+        self.best_set_coef = coefs[best_indexes]
