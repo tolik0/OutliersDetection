@@ -15,7 +15,7 @@ class EvolutionaryOutliersSearch:
 
             Args:
                 ----------
-                results_number (int) : Number of outlier points to find.
+                results_number (int) : Number of outlier ranges to find.
                 dimensionality (int) : Dimensionality of the projection which is used to determine the outliers.
                 p (int) : number of solutions to work with.
                 p1 (float) : probability of first type mutation.
@@ -59,7 +59,7 @@ class EvolutionaryOutliersSearch:
         partitions = np.insert(
             np.argsort(data, axis=0),
             range((self.records_number // self.f + 1) * (self.records_number % self.f)
-                  if self.features_number % self.f else self.records_number,
+                  if self.records_number % self.f else self.records_number,
                   self.records_number, self.records_number // self.f),
             values=-1, axis=0
         )
@@ -78,7 +78,7 @@ class EvolutionaryOutliersSearch:
             s = self.selection(s)
             s = self.cross_over(s)
             s = self.mutation(s)
-            self.save_best_solutions()
+            self.save_best_solutions(s)
 
         return np.unique(np.concatenate([
             self.query_partions(solution) for solution in self.best_set
@@ -119,7 +119,7 @@ class EvolutionaryOutliersSearch:
         points = self.query_partions(solution)
         prob = 1 / self.f ** dimensionality
         return (len(points) - self.records_number * prob) / \
-               np.sqrt(self.records_number * prob * (1 - prob))
+            np.sqrt(self.records_number * prob * (1 - prob))
 
     def get_initial_state(self):
         """
@@ -155,7 +155,7 @@ class EvolutionaryOutliersSearch:
         p, features_num = s.shape
         for j in range(features_num):
             _, count = np.unique(s[:, j], return_counts=True)
-            if np.all(count < convergence_criteria * count.sum()):
+            if np.all(count < convergence_criteria * p):
                 return False
         return True
 
@@ -175,7 +175,7 @@ class EvolutionaryOutliersSearch:
         coefficients = np.empty(shape=(self.p,))
         for i, solution in enumerate(s):
             coefficients[i] = self.sparcity_coefficient(solution)
-        ranks = p - coefficients.argsort().argsort()
+        ranks = p - coefficients.argsort().argsort() - 1
         return s[np.random.choice(np.arange(p), size=p, p=ranks / np.sum(ranks))]
 
     def cross_over(self, s):
@@ -224,23 +224,22 @@ class EvolutionaryOutliersSearch:
                     best_coef, best_sol = coef, sol
             c1[r] = best_sol
             # greedily find best solution among q
-            q_size = q.shape[0]
             dimensions_inserted = r_size
             taken_q = np.zeros_like(q)
-            while dimensions_inserted != r_size + q_size // 2:
+            while dimensions_inserted != self.dimensionality:
                 dimensions_inserted += 1
 
-                best_coef, best_index = np.inf, None
-                for taken, q_index in zip(taken_q, q):
+                best_coef, best_index, current_best_index = np.inf, None, None
+                for j, (taken, q_index) in enumerate(zip(taken_q, q)):
                     if not taken:
                         c1[q_index] = q_sol[q_index]
                         coef = self.sparcity_coefficient(c1, dimensions_inserted)
                         if coef < best_coef:
-                            best_coef, best_index = coef, q_index
+                            best_coef, best_index, current_best_index = coef, q_index, j
                         c1[q_index] = -1
 
                 c1[best_index] = q_sol[best_index]
-                taken_q[best_index] = 1
+                taken_q[current_best_index] = 1
 
             # make c2 complemtary to c1
             crossover_positions = np.concatenate([r, q])
