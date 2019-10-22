@@ -81,8 +81,7 @@ class EvolutionaryOutliersSearch:
             s = self.cross_over(s)
             s = self.mutation(s)
             self.save_best_solutions(s)
-
-        print(self.i)
+        # print(self.i)
         return self.best_set, self.best_set_coef
 
     def __call__(self, data):
@@ -156,7 +155,6 @@ class EvolutionaryOutliersSearch:
             positions = np.random.choice(range(self.features_number),
                                          replace=False, size=self.dimensionality)
             solution[positions] = np.random.randint(low=0, high=self.f, size=self.dimensionality)
-
         return s
 
     @staticmethod
@@ -196,7 +194,8 @@ class EvolutionaryOutliersSearch:
         coefficients = np.empty(shape=(self.p,))
         for i, solution in enumerate(s):
             coefficients[i] = self.sparcity_coefficient(solution)
-        ranks = p - coefficients.argsort().argsort() - 1
+        ranks = p - coefficients.argsort().argsort() -1
+        # print(ranks / np.sum(ranks))
         return s[np.random.choice(np.arange(p), size=p, p=ranks / np.sum(ranks))]
 
     def cross_over(self, s):
@@ -255,6 +254,7 @@ class EvolutionaryOutliersSearch:
                 for j, (taken, q_index) in enumerate(zip(taken_q, q)):
                     if not taken:
                         c1[q_index] = q_sol[j]
+                        # print(c1, dimensions_inserted)
                         coef = self.sparcity_coefficient(c1, dimensions_inserted)
                         if coef < best_coef:
                             best_coef, best_index, current_best_index = coef, q_index, j
@@ -318,6 +318,13 @@ class EvolutionaryOutliersSearch:
         s_coef = np.repeat(s_coef, points_number)
 
         coefs = np.concatenate([self.best_set_coef, s_coef])
-        best_indexes = np.argpartition(coefs, self.result_number-1)[:self.result_number]
-        self.best_set = np.concatenate([self.best_set, np.concatenate(points)])[best_indexes]
+        points = np.concatenate([self.best_set, *points])
+        points, unique_points_idx = np.unique(points, return_index=True)
+        coefs = coefs[unique_points_idx]
+
+        if self.result_number <= coefs.shape[0]:
+            best_indexes = np.argpartition(coefs, self.result_number-1)[:self.result_number]
+        else:
+            best_indexes = np.arange(0, coefs.shape[0])
+        self.best_set = points[best_indexes]
         self.best_set_coef = coefs[best_indexes]
